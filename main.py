@@ -1,23 +1,38 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from celery import Celery
 from supabase import create_client, Client
 from pydantic import BaseModel
 from typing import List
 import os
 import asyncio
 from datetime import datetime
+from dotenv import load_dotenv
 
 from tasks import process_video_with_broll
+from db_operations import create_reel_entry, update_reel_status
+from celery_config import celery_app
 
-# Initialize FastAPI and Celery
+# Load environment variables at the start of your application
+load_dotenv()
+
+# Verify the environment variables are loaded
+print("SUPABASE_URL:", os.getenv("SUPABASE_URL"))
+print("SUPABASE_KEY:", os.getenv("SUPABASE_KEY"))
+
+# Initialize Supabase client
+supabase_url = os.getenv("SUPABASE_URL")
+supabase_key = os.getenv("SUPABASE_KEY")
+
+if not supabase_url or not supabase_key:
+    raise ValueError("Missing required environment variables: SUPABASE_URL or SUPABASE_KEY")
+
+# Initialize FastAPI
 app = FastAPI()
-celery = Celery('tasks', broker='redis://localhost:6379/0')
 
 # Initialize Supabase
 supabase: Client = create_client(
-    os.getenv("SUPABASE_URL"),
-    os.getenv("SUPABASE_KEY")
+    supabase_url,
+    supabase_key
 )
 
 # Enable CORS
@@ -53,28 +68,6 @@ class VideoProcessingRequest(BaseModel):
     user_id: str
     style: str = "default"  # Can be used to control b-roll style/frequency
 
-# Database functions
-async def create_reel_entry(user_id: str, prompt: str) -> str:
-    data = {
-        'user_id': user_id,
-        'prompt': prompt,
-        'status': 'pending',
-        'created_at': datetime.utcnow().isoformat(),
-        'updated_at': datetime.utcnow().isoformat()
-    }
-    
-    result = supabase.table('reels').insert(data).execute()
-    return result.data[0]['id']
-
-async def update_reel_status(reel_id: str, status: str, output_url: str = None):
-    data = {
-        'status': status,
-        'updated_at': datetime.utcnow().isoformat(),
-        'output_url': output_url
-    }
-    
-    supabase.table('reels').update(data).eq('id', reel_id).execute()
-
 # Routes
 @app.post("/api/upload")
 async def upload_video(file: UploadFile = File(...)):
@@ -100,13 +93,16 @@ async def upload_video(file: UploadFile = File(...)):
 async def create_reel(request: ReelRequest):
     try:
         # Create entry in reels table
-        reel_id = await create_reel_entry(request.user_id, request.prompt)
+        reel_id = await create_reel_entry(supabase, request.user_id, request.prompt)
         
         # Queue the video processing task
+        print(f"Queueing task for reel_id: {reel_id}")  # Debug log
         task = process_video_with_broll.delay(request.dict(), reel_id)
+        print(f"Task queued with id: {task.id}")  # Debug log
         
         return {"reel_id": reel_id, "task_id": task.id}
     except Exception as e:
+        print(f"Error queueing task: {str(e)}")  # Debug log
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/status/{reel_id}")
@@ -121,13 +117,15 @@ async def get_status(reel_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/process-video")
-async def process_video(request: VideoProcessingRequest):
+def process_video(request: VideoProcessingRequest):
     try:
         # Create entry in reels table
-        reel_id = await create_reel_entry(request.user_id, "B-roll generation")
+        reel_id = create_reel_entry(supabase, request.user_id, "B-roll generation")
         
         # Queue the video processing task
+        print(f"Queueing task for reel_id: {reel_id}")  # Debug log
         task = process_video_with_broll.delay(request.dict(), reel_id)
+        print(f"Task queued with id: {task.id}")  # Debug log
         
         return {"reel_id": reel_id, "task_id": task.id}
     except Exception as e:

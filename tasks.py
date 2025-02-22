@@ -10,8 +10,7 @@ import supabase
 import whisper
 from pexels_api import API
 import json
-
-from main import update_reel_status
+from db_operations import update_reel_status
 
 celery = Celery('tasks', broker='redis://localhost:6379/0')
 
@@ -20,8 +19,9 @@ pexels = API(PEXELS_API_KEY)
 
 @celery.task
 def process_video_with_broll(request_data: dict, reel_id: str):
+    print(f"Processing video for reel_id: {reel_id}")  # Debug log
     try:
-        update_reel_status(reel_id, 'processing')
+        update_reel_status(supabase, reel_id, "processing")
         
         # Download the main video
         main_video_path = download_clip(request_data['video_url'])
@@ -41,7 +41,7 @@ def process_video_with_broll(request_data: dict, reel_id: str):
         # 5. Upload to Supabase Storage
         file_path = f"output/{reel_id}.mp4"
         with open(output_path, 'rb') as f:
-            supabase.storage.from_('videos').upload(file_path, f)
+            supabase.storage.from_('output').upload(file_path, f)
         
         output_url = supabase.storage.from_('videos').get_public_url(file_path)
         
@@ -49,12 +49,12 @@ def process_video_with_broll(request_data: dict, reel_id: str):
         os.unlink(main_video_path)
         os.unlink(output_path)
         
-        update_reel_status(reel_id, 'completed', output_url)
+        update_reel_status(supabase, reel_id, "completed", output_url)
         return {"status": "completed", "url": output_url}
         
     except Exception as e:
-        update_reel_status(reel_id, 'failed')
-        return {"status": "failed", "error": str(e)}
+        update_reel_status(supabase, reel_id, "failed")
+        raise e
 
 def extract_keywords_from_video(video_path: str) -> List[Dict]:
     """Extract keywords and timestamps from video audio"""
