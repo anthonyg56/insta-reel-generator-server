@@ -50,13 +50,28 @@ footage.
 
 6. run celery worker:
    ```bash
-   celery -A celery_config worker --loglevel=info
+   celery -A celery_config.celery_app worker --loglevel=info
    ```
 
 7. run the server:
    ```bash
    fastapi dev main.py
    ```
+
+## Quick Start
+
+You can start all services (Redis, Celery, and FastAPI) using the provided
+scripts after installing the necessary dependencies:
+
+### Using WSL (Recommended)
+
+```bash
+# Make the script executable (first time only)
+chmod +x start.sh
+
+# Start all services
+./start.sh
+```
 
 ## API Documentation
 
