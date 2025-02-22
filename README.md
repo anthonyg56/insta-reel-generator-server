@@ -71,7 +71,9 @@ Once the server is running, you can access:
    Windows directly.
 
 2. **Environment Variables Not Loading**: Ensure .env file has Unix line endings
-   (use dos2unix).
+   ```bash
+   dos2unix .env
+   ```
 
 3. **Redis Connection Issues**: Verify Redis is running in WSL with
    `redis-cli ping`.
