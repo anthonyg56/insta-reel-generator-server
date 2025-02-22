@@ -9,6 +9,9 @@ footage.
 - Windows Subsystem for Linux (WSL) with Ubuntu
 - Redis Server
 - Git
+- supabase account
+- openai account
+- pexels account
 
 ## Development Setup
 
